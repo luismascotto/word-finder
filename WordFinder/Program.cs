@@ -31,11 +31,17 @@ class Program
             name: "--max-length",
             description: "Maximum word length");
 
+        var includeOrderedOption = new Option<bool>(
+            name: "--include-ordered",
+            description: "Include letters in order");
+
         rootCommand.AddOption(fileOption);
         rootCommand.AddOption(includeOption);
         rootCommand.AddOption(excludeOption);
         rootCommand.AddOption(minLengthOption);
         rootCommand.AddOption(maxLengthOption);
+        rootCommand.AddOption(includeOrderedOption);
+
 
         rootCommand.SetHandler(context =>
         {
@@ -44,6 +50,7 @@ class Program
             var exclude = context.ParseResult.GetValueForOption(excludeOption);
             var minLength = context.ParseResult.GetValueForOption(minLengthOption);
             var maxLength = context.ParseResult.GetValueForOption(maxLengthOption);
+            var includeOrdered = context.ParseResult.GetValueForOption(includeOrderedOption);
 
             if (!File.Exists(file))
             {
@@ -60,23 +67,26 @@ class Program
                 include,
                 exclude,
                 minLength?.ToString(),
-                maxLength?.ToString());
+                maxLength?.ToString(),
+                includeOrdered);
 
             Console.WriteLine($"\nFound {matches.Count} matching words:");
-            
-            var maxWordLength = matches.Count > 0 ? matches.Max(w => w.Length) : 0;
-            var columnWidth = maxWordLength + 2; // Add 2 spaces for padding
+            matches.Sort();
 
-            for (int i = matches.Count - 1; i >= 0; i--)
+            var columnWidth = (maxLength ?? 0) + 2; // Add 2 spaces for padding
+
+            for (int i = 0; i < matches.Count; i++)
             {
-                var word = matches[i];
-                Console.Write(word.PadRight(columnWidth));
-                
-                if ((matches.Count - i) % 4 == 0 || i == 0)
+                Console.Write(matches[i]);
+                if ((matches.Count - i) % 4 == 0)
                 {
                     Console.WriteLine();
+                    continue;
                 }
+                Console.Write("             "[..(columnWidth - matches[i].Length)]);
+
             }
+            Console.WriteLine();
         });
 
         return await rootCommand.InvokeAsync(args);

@@ -49,7 +49,7 @@ public class WordDictionary
         return _wordsByLength.Keys.OrderBy(k => k);
     }
 
-    public List<string> Search(string? inputInclude, string? inputExclude, string? inputLength, string? inputMaxLength)
+    public List<string> Search(string? inputInclude, string? inputExclude, string? inputLength, string? inputMaxLength, bool includeOrder = false)
     {
         if (inputInclude == null && inputExclude == null && inputLength == null && inputMaxLength == null)
         {
@@ -75,26 +75,45 @@ public class WordDictionary
         }
 
         var srcInclude = inputInclude?.Select(c => SearchValues.Create(c.ToString().AsSpan())).ToList();
+        //Print srcInclude
+        if (srcInclude != null)
+        {
+            Console.WriteLine($"inputInclude: {string.Join(", ", inputInclude!.Select(s => s))}");
+        }
         var srcExclude = inputExclude != null ? SearchValues.Create(inputExclude.AsSpan()) : null;
 
         var matches = new List<string>();
 
         foreach (var length in GetAvailableLengths().Where(l => l >= minLength && l <= maxLength))
         {
-
-
             var words = GetWordsByLength(length);
             foreach (var word in words)
             {
+                if (srcExclude != null && word.AsSpan().IndexOfAny(srcExclude) != -1)
+                {
+                    continue;
+                }
+
                 if (srcInclude != null)
                 {
+                    int lastIndex = -1;
+                    int index;
                     bool allLettersFound = true;
                     foreach (var searchValue in srcInclude)
                     {
-                        if (word.AsSpan().IndexOfAny(searchValue) == -1)
+                        index = word.AsSpan()[(lastIndex + 1)..].IndexOfAny(searchValue);
+                        if (index == -1)
                         {
                             allLettersFound = false;
                             break;
+                        }
+                        if (!includeOrder)
+                        {
+                            lastIndex = -1; 
+                        }
+                        else
+                        {
+                            lastIndex += index + 1; // Move past the found letter
                         }
                     }
                     if (!allLettersFound)
@@ -102,12 +121,6 @@ public class WordDictionary
                         continue;
                     }
                 }
-
-                if (srcExclude != null && word.AsSpan().IndexOfAny(srcExclude) != -1)
-                {
-                    continue;
-                }
-
                 matches.Add(word);
             }
         }

@@ -55,3 +55,4 @@ nunit-*.xml
 
 .cr
 .vs
+/WordFinder/Properties/launchSettings.json
