@@ -1,51 +1,116 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace WordFinder
+namespace WordFinder;
+
+public class WordDictionary
 {
-    public class WordDictionary
+    private readonly Dictionary<int, List<string>> _wordsByLength;
+    private readonly string _filePath;
+
+    public WordDictionary(string filePath)
     {
-        private readonly Dictionary<int, List<string>> _wordsByLength;
-        private readonly string _filePath;
+        _filePath = filePath;
+        _wordsByLength = [];
+    }
 
-        public WordDictionary(string filePath)
+    public void LoadWords()
+    {
+        if (!File.Exists(_filePath))
         {
-            _filePath = filePath;
-            _wordsByLength = [];
+            throw new FileNotFoundException($"Word file not found at: {_filePath}");
         }
 
-        public void LoadWords()
+        var words = File.ReadAllLines(_filePath);
+
+        foreach (var word in words)
         {
-            if (!File.Exists(_filePath))
+            var length = word.Length;
+            if (!_wordsByLength.TryGetValue(length, out List<string>? value))
             {
-                throw new FileNotFoundException($"Word file not found at: {_filePath}");
+                value = [];
+                _wordsByLength[length] = value;
             }
 
-            var words = File.ReadAllLines(_filePath);
-            
-            foreach (var word in words)
-            {
-                var length = word.Length;
-                if (!_wordsByLength.TryGetValue(length, out List<string>? value))
-                {
-                    value = [];
-                    _wordsByLength[length] = value;
-                }
-
-                value.Add(word);
-            }
-        }
-
-        public List<string> GetWordsByLength(int length)
-        {
-            return _wordsByLength.TryGetValue(length, out var words) ? words : [];
-        }
-
-        public IEnumerable<int> GetAvailableLengths()
-        {
-            return _wordsByLength.Keys.OrderBy(k => k);
+            value.Add(word);
         }
     }
-} 
+
+    public List<string> GetWordsByLength(int length)
+    {
+        return _wordsByLength.TryGetValue(length, out var words) ? words : [];
+    }
+
+    public IEnumerable<int> GetAvailableLengths()
+    {
+        return _wordsByLength.Keys.OrderBy(k => k);
+    }
+
+    public List<string> Search(string? inputInclude, string? inputExclude, string? inputLength, string? inputMaxLength)
+    {
+        if (inputInclude == null && inputExclude == null && inputLength == null && inputMaxLength == null)
+        {
+            throw new ArgumentException("No search criteria provided");
+        }
+
+        int minLength = 0;
+        int maxLength = 0;
+
+        if (inputLength != null)
+        {
+            minLength = int.Parse(inputLength);
+        }
+
+        if (inputMaxLength != null)
+        {
+            maxLength = int.Parse(inputMaxLength);
+        }
+
+        if (minLength > maxLength)
+        {
+            throw new ArgumentException("Minimum length cannot be greater than maximum length");
+        }
+
+        var srcInclude = inputInclude?.Select(c => SearchValues.Create(c.ToString().AsSpan())).ToList();
+        var srcExclude = inputExclude != null ? SearchValues.Create(inputExclude.AsSpan()) : null;
+
+        var matches = new List<string>();
+
+        foreach (var length in GetAvailableLengths().Where(l => l >= minLength && l <= maxLength))
+        {
+
+
+            var words = GetWordsByLength(length);
+            foreach (var word in words)
+            {
+                if (srcInclude != null)
+                {
+                    bool allLettersFound = true;
+                    foreach (var searchValue in srcInclude)
+                    {
+                        if (word.AsSpan().IndexOfAny(searchValue) == -1)
+                        {
+                            allLettersFound = false;
+                            break;
+                        }
+                    }
+                    if (!allLettersFound)
+                    {
+                        continue;
+                    }
+                }
+
+                if (srcExclude != null && word.AsSpan().IndexOfAny(srcExclude) != -1)
+                {
+                    continue;
+                }
+
+                matches.Add(word);
+            }
+        }
+        return matches;
+    }
+}
