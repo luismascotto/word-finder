@@ -6,6 +6,8 @@ namespace WordFinder;
 
 class Program
 {
+    //--includeAll "gce" --include "st" --exclude "jzx" --min-length 8 --max-length 16 --include-ordered true
+    const string _spaces = "                                                                                                                                                                         ";
     static async Task<int> Main(string[] args)
     {
         var rootCommand = new RootCommand("Word Finder - A tool to search for words based on various criteria");
@@ -15,13 +17,21 @@ class Program
             description: "Path to the words file",
             getDefaultValue: () => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "words_alpha.txt"));
 
+        var regexOption = new Option<string?>(
+            name: "--regex",
+            description: "Regular expression for word matching");
+
+        var includeAllOption = new Option<string?>(
+            name: "--includeAll",
+            description: "Letters that must be all present in the word");
+
         var includeOption = new Option<string?>(
             name: "--include",
-            description: "Letters that must be included in the word");
+            description: "Letters that must appear at least one in the word");
 
         var excludeOption = new Option<string?>(
             name: "--exclude",
-            description: "Letters that must be excluded from the word");
+            description: "Letters that cannot exist in the word");
 
         var minLengthOption = new Option<int?>(
             name: "--min-length",
@@ -31,26 +41,30 @@ class Program
             name: "--max-length",
             description: "Maximum word length");
 
-        var includeOrderedOption = new Option<bool>(
-            name: "--include-ordered",
-            description: "Include letters in order");
+        var includeAllOrderedOption = new Option<bool>(
+            name: "--ordered",
+            description: "IncludeAll letters must respect order of appearance");
 
         rootCommand.AddOption(fileOption);
+        rootCommand.AddOption(regexOption);
+        rootCommand.AddOption(includeAllOption);
         rootCommand.AddOption(includeOption);
         rootCommand.AddOption(excludeOption);
         rootCommand.AddOption(minLengthOption);
         rootCommand.AddOption(maxLengthOption);
-        rootCommand.AddOption(includeOrderedOption);
+        rootCommand.AddOption(includeAllOrderedOption);
 
 
         rootCommand.SetHandler(context =>
         {
             var file = context.ParseResult.GetValueForOption(fileOption);
+            var regex = context.ParseResult.GetValueForOption(regexOption);
+            var includeAll = context.ParseResult.GetValueForOption(includeAllOption);
             var include = context.ParseResult.GetValueForOption(includeOption);
             var exclude = context.ParseResult.GetValueForOption(excludeOption);
             var minLength = context.ParseResult.GetValueForOption(minLengthOption);
             var maxLength = context.ParseResult.GetValueForOption(maxLengthOption);
-            var includeOrdered = context.ParseResult.GetValueForOption(includeOrderedOption);
+            var includeAllOrdered = context.ParseResult.GetValueForOption(includeAllOrderedOption);
 
             if (!File.Exists(file))
             {
@@ -63,17 +77,30 @@ class Program
             var dictionary = new WordDictionary(file);
             dictionary.LoadWords();
 
-            var matches = dictionary.Search(
-                include,
-                exclude,
-                minLength?.ToString(),
-                maxLength?.ToString(),
-                includeOrdered);
+            List<string> matches;
+
+            if (regex != null)
+            {
+                Console.WriteLine($"Searching with regex: [{regex}]");
+                matches = dictionary.SearchWithRegex(regex, minLength?.ToString(), maxLength?.ToString());
+            }
+            else
+            {
+                matches = dictionary.Search(
+                    includeAll,
+                    include,
+                    exclude,
+                    minLength?.ToString(),
+                    maxLength?.ToString(),
+                    includeAllOrdered);
+
+            }
+
 
             Console.WriteLine($"\nFound {matches.Count} matching words:");
             matches.Sort();
 
-            var columnWidth = (maxLength ?? 0) + 2; // Add 2 spaces for padding
+            var columnWidth = (maxLength ?? matches.Max(s => s.Length)) + 2; // Add 2 spaces for padding
 
             for (int i = 0; i < matches.Count; i++)
             {
@@ -83,12 +110,12 @@ class Program
                     Console.WriteLine();
                     continue;
                 }
-                Console.Write("             "[..(columnWidth - matches[i].Length)]);
+                Console.Write(_spaces[..(columnWidth - matches[i].Length)]);
 
             }
             Console.WriteLine();
         });
 
-        return await rootCommand.InvokeAsync(args);
+        return await rootCommand.InvokeAsync(args).ConfigureAwait(false);
     }
 }

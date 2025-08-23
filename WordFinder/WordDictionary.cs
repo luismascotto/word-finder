@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace WordFinder;
 
@@ -29,13 +30,13 @@ public class WordDictionary
         foreach (var word in words)
         {
             var length = word.Length;
-            if (!_wordsByLength.TryGetValue(length, out List<string>? value))
+            if (!_wordsByLength.TryGetValue(length, out List<string>? wordsLengthX))
             {
-                value = [];
-                _wordsByLength[length] = value;
+                wordsLengthX = [];
+                _wordsByLength[length] = wordsLengthX;
             }
 
-            value.Add(word);
+            wordsLengthX.Add(word);
         }
     }
 
@@ -49,15 +50,15 @@ public class WordDictionary
         return _wordsByLength.Keys.OrderBy(k => k);
     }
 
-    public List<string> Search(string? inputInclude, string? inputExclude, string? inputLength, string? inputMaxLength, bool includeOrder = false)
+    public List<string> Search(string? inputIncludeAll, string? inputInclude, string? inputExclude, string? inputLength, string? inputMaxLength, bool includeOrder = false)
     {
-        if (inputInclude == null && inputExclude == null && inputLength == null && inputMaxLength == null)
+        if (inputIncludeAll == null && inputInclude == null && inputExclude == null && inputLength == null && inputMaxLength == null)
         {
             throw new ArgumentException("No search criteria provided");
         }
 
-        int minLength = 0;
-        int maxLength = 0;
+        int minLength = 1;
+        int maxLength = 99;
 
         if (inputLength != null)
         {
@@ -74,14 +75,14 @@ public class WordDictionary
             throw new ArgumentException("Minimum length cannot be greater than maximum length");
         }
 
-        var srcInclude = inputInclude?.Select(c => SearchValues.Create(c.ToString().AsSpan())).ToList();
+        var srcIncludeAll = inputIncludeAll?.Select(c => SearchValues.Create(c.ToString().AsSpan())).ToList();
         //Print srcInclude
-        if (srcInclude != null)
+        if (srcIncludeAll != null)
         {
             Console.WriteLine($"inputInclude: {string.Join(", ", inputInclude!.Select(s => s))}");
         }
         var srcExclude = inputExclude != null ? SearchValues.Create(inputExclude.AsSpan()) : null;
-
+        var srcInclude = inputInclude != null ? SearchValues.Create(inputInclude.AsSpan()) : null;
         var matches = new List<string>();
 
         foreach (var length in GetAvailableLengths().Where(l => l >= minLength && l <= maxLength))
@@ -93,13 +94,17 @@ public class WordDictionary
                 {
                     continue;
                 }
+                if (srcInclude!= null && word.AsSpan().IndexOfAny(srcInclude) == -1)
+                {
+                    continue;
+                }
 
-                if (srcInclude != null)
+                if (srcIncludeAll != null)
                 {
                     int lastIndex = -1;
                     int index;
                     bool allLettersFound = true;
-                    foreach (var searchValue in srcInclude)
+                    foreach (var searchValue in srcIncludeAll)
                     {
                         index = word.AsSpan()[(lastIndex + 1)..].IndexOfAny(searchValue);
                         if (index == -1)
@@ -120,6 +125,51 @@ public class WordDictionary
                     {
                         continue;
                     }
+                }
+                matches.Add(word);
+            }
+        }
+        return matches;
+    }
+
+    public List<string> SearchWithRegex(string regex, string? inputLength, string? inputMaxLength)
+    {
+        if (string.IsNullOrWhiteSpace(regex))
+        {
+            throw new ArgumentException("Regex cannot be null or whitespace");
+        }
+
+        int minLength = 1;
+        int maxLength = 99;
+
+        if (inputLength != null)
+        {
+            minLength = int.Parse(inputLength);
+        }
+
+        if (inputMaxLength != null)
+        {
+            maxLength = int.Parse(inputMaxLength);
+        }
+
+        if (minLength > maxLength)
+        {
+            throw new ArgumentException("Minimum length cannot be greater than maximum length");
+        }
+
+        var regexMatch = new Regex(regex);
+
+
+        var matches = new List<string>();
+
+        foreach (var length in GetAvailableLengths().Where(l => l >= minLength && l <= maxLength))
+        {
+            var words = GetWordsByLength(length);
+            foreach (var word in words)
+            {
+                if (!regexMatch.IsMatch(word))
+                {
+                    continue;
                 }
                 matches.Add(word);
             }
