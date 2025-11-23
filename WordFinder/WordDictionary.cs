@@ -1,8 +1,4 @@
-using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace WordFinder;
@@ -12,13 +8,14 @@ public class WordDictionary
     private readonly Dictionary<int, List<string>> _wordsByLength;
     private readonly string _filePath;
 
+
     public WordDictionary(string filePath)
     {
         _filePath = filePath;
         _wordsByLength = [];
     }
 
-    public void LoadWords()
+    public void LoadWords(int min = 1, int max = 99)
     {
         if (!File.Exists(_filePath))
         {
@@ -30,13 +27,17 @@ public class WordDictionary
         foreach (var word in words)
         {
             var length = word.Length;
-            if (!_wordsByLength.TryGetValue(length, out List<string>? wordsLengthX))
+            if (length < min || length > max)
             {
-                wordsLengthX = [];
-                _wordsByLength[length] = wordsLengthX;
+                continue;
+            }
+            if (!_wordsByLength.TryGetValue(length, out List<string>? currLengthWords))
+            {
+                currLengthWords = [];
+                _wordsByLength[length] = currLengthWords;
             }
 
-            wordsLengthX.Add(word);
+            currLengthWords.Add(word);
         }
     }
 
@@ -50,73 +51,68 @@ public class WordDictionary
         return _wordsByLength.Keys.OrderBy(k => k);
     }
 
-    public List<string> Search(string? inputIncludeAll, string? inputInclude, string? inputExclude, string? inputLength, string? inputMaxLength, bool includeOrder = false)
+    public List<string> Search(string? inputIncludeAll, string? inputIncludeOnly, string? inputInclude, string? inputExclude, bool includeOrder = false)
     {
-        if (inputIncludeAll == null && inputInclude == null && inputExclude == null && inputLength == null && inputMaxLength == null)
+        if (inputIncludeAll != null)
         {
-            throw new ArgumentException("No search criteria provided");
+            Console.WriteLine($"inputIncludeAll: {inputIncludeAll.Detailed()} - ordered: {includeOrder}");
         }
-
-        int minLength = 1;
-        int maxLength = 99;
-
-        if (inputLength != null)
+        if (inputIncludeOnly != null)
         {
-            minLength = int.Parse(inputLength);
+            Console.WriteLine($"inputIncludeOnly: {inputIncludeOnly.Detailed()}");
         }
-
-        if (inputMaxLength != null)
+        if (inputInclude != null)
         {
-            maxLength = int.Parse(inputMaxLength);
+            Console.WriteLine($"inputInclude: {inputInclude.Detailed()}");
         }
-
-        if (minLength > maxLength)
+        if (inputExclude != null)
         {
-            throw new ArgumentException("Minimum length cannot be greater than maximum length");
+            Console.WriteLine($"inputExclude: {inputExclude.Detailed()}");
         }
-
-        var srcIncludeAll = inputIncludeAll?.Select(c => SearchValues.Create(c.ToString().AsSpan())).ToList();
-        //Print srcInclude
-        if (srcIncludeAll != null)
-        {
-            Console.WriteLine($"inputInclude: {string.Join(", ", inputInclude!.Select(s => s))}");
-        }
-        var srcExclude = inputExclude != null ? SearchValues.Create(inputExclude.AsSpan()) : null;
-        var srcInclude = inputInclude != null ? SearchValues.Create(inputInclude.AsSpan()) : null;
+        var srchIncludeAll = inputIncludeAll?.Select(c => SearchValues.Create(c.ToString().AsSpan())).ToList();
+        var srchExclude = inputExclude != null ? SearchValues.Create(inputExclude.AsSpan()) : null;
+        var srchInclude = inputInclude != null ? SearchValues.Create(inputInclude.AsSpan()) : null;
+        var spanIncludeOnly = inputIncludeOnly != null ? inputIncludeOnly.AsSpan() : null;
         var matches = new List<string>();
 
-        foreach (var length in GetAvailableLengths().Where(l => l >= minLength && l <= maxLength))
+        foreach (var length in GetAvailableLengths())
         {
             var words = GetWordsByLength(length);
             foreach (var word in words)
             {
-                if (srcExclude != null && word.AsSpan().IndexOfAny(srcExclude) != -1)
+                var wordAsSpan = word.AsSpan();
+
+                if (!spanIncludeOnly.IsEmpty)
+                {
+                    if (wordAsSpan.ContainsAnyExcept(spanIncludeOnly))
+                    {
+                        continue;
+                    }
+                }
+
+                if (srchExclude != null && wordAsSpan.IndexOfAny(srchExclude) != -1)
                 {
                     continue;
                 }
-                if (srcInclude!= null && word.AsSpan().IndexOfAny(srcInclude) == -1)
+                if (srchInclude != null && wordAsSpan.IndexOfAny(srchInclude) == -1)
                 {
                     continue;
                 }
 
-                if (srcIncludeAll != null)
+                if (srchIncludeAll != null)
                 {
                     int lastIndex = -1;
                     int index;
                     bool allLettersFound = true;
-                    foreach (var searchValue in srcIncludeAll)
+                    foreach (var searchValue in srchIncludeAll)
                     {
-                        index = word.AsSpan()[(lastIndex + 1)..].IndexOfAny(searchValue);
+                        index = wordAsSpan[(lastIndex + 1)..].IndexOfAny(searchValue);
                         if (index == -1)
                         {
                             allLettersFound = false;
                             break;
                         }
-                        if (!includeOrder)
-                        {
-                            lastIndex = -1; 
-                        }
-                        else
+                        if (includeOrder)
                         {
                             lastIndex += index + 1; // Move past the found letter
                         }
@@ -132,44 +128,102 @@ public class WordDictionary
         return matches;
     }
 
-    public List<string> SearchWithRegex(string regex, string? inputLength, string? inputMaxLength)
+    public List<string> SearchWithRegex(string strRegex)
     {
-        if (string.IsNullOrWhiteSpace(regex))
+        if (string.IsNullOrWhiteSpace(strRegex))
         {
             throw new ArgumentException("Regex cannot be null or whitespace");
         }
 
-        int minLength = 1;
-        int maxLength = 99;
-
-        if (inputLength != null)
-        {
-            minLength = int.Parse(inputLength);
-        }
-
-        if (inputMaxLength != null)
-        {
-            maxLength = int.Parse(inputMaxLength);
-        }
-
-        if (minLength > maxLength)
-        {
-            throw new ArgumentException("Minimum length cannot be greater than maximum length");
-        }
-
-        var regexMatch = new Regex(regex);
-
-
+        var regex = new Regex(strRegex);
         var matches = new List<string>();
 
-        foreach (var length in GetAvailableLengths().Where(l => l >= minLength && l <= maxLength))
+        foreach (var length in GetAvailableLengths())
         {
             var words = GetWordsByLength(length);
             foreach (var word in words)
             {
-                if (!regexMatch.IsMatch(word))
+                if (regex.IsMatch(word))
+                {
+                    matches.Add(word);
+                }
+            }
+        }
+        return matches;
+    }
+
+    public List<string> Search(SearchCriteria criteria)
+    {
+        ArgumentNullException.ThrowIfNull(criteria);
+
+        var matches = new List<string>();
+
+        foreach (var length in GetAvailableLengths())
+        {
+            //Replicate foreach to avoid multiple checks and add/continue flow for each word
+            List<string> words = GetWordsByLength(length);
+
+            if (criteria.Regex != null)
+            {
+                foreach (var word in words)
+                {
+                    if (criteria.Regex.IsMatch(word))
+                    {
+                        matches.Add(word);
+                    }
+                }
+                continue;
+            }
+
+            if (!criteria.SpanIncludeOnly().IsEmpty)
+            {
+                foreach (var word in words)
+                {
+                    var wordAsSpan = word.AsSpan();
+                    if (wordAsSpan.ContainsAnyExcept(criteria.SpanIncludeOnly()) == false)
+                    {
+                        matches.Add(word);
+                    }
+                }
+                continue;
+            }
+
+            // Complementary criteria
+            foreach (var word in words)
+            {
+                var wordAsSpan = word.AsSpan();
+
+                if (criteria.Exclude != null && wordAsSpan.ContainsAny(criteria.Exclude))
                 {
                     continue;
+                }
+                if (criteria.Include != null && !wordAsSpan.ContainsAny(criteria.Include))
+                {
+                    continue;
+                }
+
+                if (criteria.IncludeAll != null)
+                {
+                    int lastIndex = -1;
+                    int index;
+                    bool allLettersFound = true;
+                    foreach (var searchValue in criteria.IncludeAll)
+                    {
+                        index = wordAsSpan[(lastIndex + 1)..].IndexOfAny(searchValue);
+                        if (index == -1)
+                        {
+                            allLettersFound = false;
+                            break;
+                        }
+                        if (criteria.IncludeOrder)
+                        {
+                            lastIndex += index + 1; // Move past the found letter
+                        }
+                    }
+                    if (!allLettersFound)
+                    {
+                        continue;
+                    }
                 }
                 matches.Add(word);
             }
