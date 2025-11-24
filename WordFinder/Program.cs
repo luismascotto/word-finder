@@ -6,11 +6,12 @@ class Program
 {
     //--includeAll "gce" --include "st" --exclude "jzx" --min-length 8 --max-length 16 --include-ordered true
     const string _spaces = "                                                                                                                                                                         ";
+    private const int PRINTING_COLUMNS = 5;
     static int Main(string[] args)
     {
         var rootCommand = new RootCommand("Word Finder - A tool to search for words based on various criteria");
         rootCommand.Aliases.Add("word-finder");
-        
+
 
         var fileOption = new Option<string>("--file", ["-p"])
         {
@@ -57,7 +58,7 @@ class Program
         {
             Description = "Minimum word length",
             HelpName = "length",
-            DefaultValueFactory = _ => 4            
+            DefaultValueFactory = _ => 4
         };
 
         var maxLengthOption = new Option<int?>("--max-length", ["-max", "-x"])
@@ -83,7 +84,7 @@ class Program
         rootCommand.Options.Add(maxLengthOption);
         rootCommand.Options.Add(includeAllOrderedOption);
 
-    
+
         rootCommand.SetAction(context =>
         {
             var file = context.GetValue(fileOption);
@@ -128,29 +129,36 @@ class Program
                 Console.WriteLine("Include Only was specified, all other include/exclude are ineffective.");
             }
 
-            if (minLength.GetValueOrDefault() > maxLength.GetValueOrDefault())
+            if (minLength.GetValueOrDefault(0) < 1 || minLength.GetValueOrDefault(0) > maxLength.GetValueOrDefault(0))
             {
-                throw new ArgumentException("Minimum length cannot be greater than maximum length");
+                throw new ArgumentException("Minimum length cannot be greater than maximum length, and greater than zero");
             }
 
             Console.WriteLine($"Loading words from: {file}");
             var dictionary = new WordDictionary(file);
-            dictionary.LoadWords();
+            dictionary.LoadWordsReadAll();
 
 #if DEBUG
             Console.WriteLine($"Loaded {dictionary.GetAvailableLengths().Count()} word lengths.");
             foreach (var length in dictionary.GetAvailableLengths().OrderBy(l => l))
             {
-                var items = Math.Max(1, 120 / Math.Max(1, length));
+                var items =  1+(80 / (length+4));
                 var words = dictionary.GetWordsByLength(length);
-                Console.Write($"{length:D02}: {words.Take(items).Detailed()}");
+                //Console.WriteLine($" {length:D02}: Chunks {words.Chunk(words.Count/items).Count()} ChunkSize {words.Chunk(words.Count / items).FirstOrDefault()?.Length}");
+
+
+                Console.Write($" {length,-3}: {words.Chunk(Math.Max(1, words.Count / items))?.Select(chk => chk.FirstOrDefault("")).Take(items).Detailed()}");
+
+
+                //Console.Write($" {length:D02}: {(words.Chunk(items).Skip(Random.Shared.Next(0, items)).Take(1)).FirstOrDefault().Detailed()}");
+
                 if (items < words.Count)
                 {
-                    Console.Write($",..more {words.Count - items} ");
+                    Console.Write($", (more {words.Count - items})");
                 }
                 Console.WriteLine();
             }
-            Console.WriteLine("---------------------------------------------------");
+            Console.WriteLine();
             //int count = 0;
             //bool printDetails = true;
             //foreach (var length in dictionary.GetAvailableLengths().OrderBy(l => l))
@@ -189,29 +197,55 @@ class Program
                     includeAllOrdered);
             }
 
+            var columnWidth = matches.Max(s => s.Length) + 4; // spaces for padding
 
             Console.WriteLine($"\nFound {matches.Count} matching words:");
-            matches.Sort();
+            //Console.WriteLine("----- OLD");
 
-            var columnWidth = (maxLength ?? matches.Max(s => s.Length)) + 2; // Add 2 spaces for padding
+            //for (int i = 0; i < matches.Count; i++)
+            //{
+            //    Console.Write(matches[i]);
+            //    if (i % 4 == 3)
+            //    {
+            //        Console.WriteLine();
+            //        continue;
+            //    }
+            //    Console.Write(_spaces[..(columnWidth - matches[i].Length)]);
 
-            for (int i = 0; i < matches.Count; i++)
+            //}
+            //Console.WriteLine();
+            //Console.WriteLine("----- NEW");
+            //Sort by length then alphabetically
+            matches = [.. matches
+                .OrderBy(s => s.Length)
+                .ThenBy(s => s, StringComparer.CurrentCulture)];
+
+            for(int len = matches.FirstOrDefault("").Length; len <= matches.LastOrDefault("").Length; len++)
             {
-                Console.Write(matches[i]);
-                if ((matches.Count - i) % 4 == 0)
+                var countByLength = matches.Count(s => s.Length == len);
+                if (countByLength > 0)
                 {
+                    Console.Write($"Length {len:D2}: {countByLength} word");
+                    if (countByLength > 1)
+                    {
+                        Console.Write("(s)");
+                    }
                     Console.WriteLine();
-                    continue;
-                }
-                Console.Write(_spaces[..(columnWidth - matches[i].Length)]);
 
+                    var wordsByLength = matches.Where(s => s.Length == len);
+                    for(int chunkStart = 0; chunkStart < countByLength; chunkStart += PRINTING_COLUMNS)
+                    {
+                        Console.Write("  ");
+                        var wordsLine = wordsByLength.Skip(chunkStart).Take(PRINTING_COLUMNS);
+                        Console.WriteLine(wordsLine.Detailed(_spaces[..(columnWidth - len)]));
+                    }
+                }
             }
             Console.WriteLine();
-
         });
 
         var ret = rootCommand.Parse(args).Invoke();
-        Console.WriteLine($"Command returned {ret}. Press Enter to exit...");
+        Console.WriteLine($"Command return code: {ret}.\n\tPress Enter to exit...");
         Console.ReadLine();
         return ret;
     }

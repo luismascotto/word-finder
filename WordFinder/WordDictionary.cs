@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace WordFinder;
@@ -15,23 +16,23 @@ public class WordDictionary
         _wordsByLength = [];
     }
 
-    public void LoadWords(int min = 1, int max = 99)
+    public void LoadWordsReadAll(int min = 2, int max = 32)
     {
-        if (!File.Exists(_filePath))
-        {
-            throw new FileNotFoundException($"Word file not found at: {_filePath}");
-        }
+        //if (!File.Exists(_filePath))
+        //{
+        //    throw new FileNotFoundException($"Word file not found at: {_filePath}");
+        //}
 
         var words = File.ReadAllLines(_filePath);
 
-        foreach (var word in words)
+        foreach(var word in words)
         {
             var length = word.Length;
-            if (length < min || length > max)
+            if(length < min || length > max)
             {
                 continue;
             }
-            if (!_wordsByLength.TryGetValue(length, out List<string>? currLengthWords))
+            if(!_wordsByLength.TryGetValue(length, out List<string>? currLengthWords))
             {
                 currLengthWords = [];
                 _wordsByLength[length] = currLengthWords;
@@ -41,31 +42,60 @@ public class WordDictionary
         }
     }
 
+    public async Task LoadWordsAsync(int min = 2, int max = 32)
+    {
+        await foreach(var word in ReadLinesAsync(_filePath))
+        {
+            var length = word.Length;
+            if(length < min || length > max)
+            {
+                continue;
+            }
+            if(!_wordsByLength.TryGetValue(length, out List<string>? currLengthWords))
+            {
+                currLengthWords = [];
+                _wordsByLength[length] = currLengthWords;
+            }
+
+            currLengthWords.Add(word);
+        }
+    }
+
+    public static async IAsyncEnumerable<string> ReadLinesAsync(string path)
+    {
+        using var reader = new StreamReader(path);
+        string? line;
+        while((line = await reader.ReadLineAsync()) is not null)
+        {
+            yield return line;
+        }
+    }
+
     public List<string> GetWordsByLength(int length)
-    {
-        return _wordsByLength.TryGetValue(length, out var words) ? words : [];
-    }
+    { return _wordsByLength.TryGetValue(length, out var words) ? words : []; }
 
-    public IEnumerable<int> GetAvailableLengths()
-    {
-        return _wordsByLength.Keys.OrderBy(k => k);
-    }
+    public IEnumerable<int> GetAvailableLengths() { return _wordsByLength.Keys.OrderBy(k => k); }
 
-    public List<string> Search(string? inputIncludeAll, string? inputIncludeOnly, string? inputInclude, string? inputExclude, bool includeOrder = false)
+    public List<string> Search(
+        string? inputIncludeAll,
+        string? inputIncludeOnly,
+        string? inputInclude,
+        string? inputExclude,
+        bool includeOrder = false)
     {
-        if (inputIncludeAll != null)
+        if(inputIncludeAll != null)
         {
             Console.WriteLine($"inputIncludeAll: {inputIncludeAll.Detailed()} - ordered: {includeOrder}");
         }
-        if (inputIncludeOnly != null)
+        if(inputIncludeOnly != null)
         {
             Console.WriteLine($"inputIncludeOnly: {inputIncludeOnly.Detailed()}");
         }
-        if (inputInclude != null)
+        if(inputInclude != null)
         {
             Console.WriteLine($"inputInclude: {inputInclude.Detailed()}");
         }
-        if (inputExclude != null)
+        if(inputExclude != null)
         {
             Console.WriteLine($"inputExclude: {inputExclude.Detailed()}");
         }
@@ -75,49 +105,49 @@ public class WordDictionary
         var spanIncludeOnly = inputIncludeOnly != null ? inputIncludeOnly.AsSpan() : null;
         var matches = new List<string>();
 
-        foreach (var length in GetAvailableLengths())
+        foreach(var length in GetAvailableLengths())
         {
             var words = GetWordsByLength(length);
-            foreach (var word in words)
+            foreach(var word in words)
             {
                 var wordAsSpan = word.AsSpan();
 
-                if (!spanIncludeOnly.IsEmpty)
+                if(!spanIncludeOnly.IsEmpty)
                 {
-                    if (wordAsSpan.ContainsAnyExcept(spanIncludeOnly))
+                    if(wordAsSpan.ContainsAnyExcept(spanIncludeOnly))
                     {
                         continue;
                     }
                 }
 
-                if (srchExclude != null && wordAsSpan.IndexOfAny(srchExclude) != -1)
+                if(srchExclude != null && wordAsSpan.IndexOfAny(srchExclude) != -1)
                 {
                     continue;
                 }
-                if (srchInclude != null && wordAsSpan.IndexOfAny(srchInclude) == -1)
+                if(srchInclude != null && wordAsSpan.IndexOfAny(srchInclude) == -1)
                 {
                     continue;
                 }
 
-                if (srchIncludeAll != null)
+                if(srchIncludeAll != null)
                 {
                     int lastIndex = -1;
                     int index;
                     bool allLettersFound = true;
-                    foreach (var searchValue in srchIncludeAll)
+                    foreach(var searchValue in srchIncludeAll)
                     {
                         index = wordAsSpan[(lastIndex + 1)..].IndexOfAny(searchValue);
-                        if (index == -1)
+                        if(index == -1)
                         {
                             allLettersFound = false;
                             break;
                         }
-                        if (includeOrder)
+                        if(includeOrder)
                         {
                             lastIndex += index + 1; // Move past the found letter
                         }
                     }
-                    if (!allLettersFound)
+                    if(!allLettersFound)
                     {
                         continue;
                     }
@@ -130,7 +160,7 @@ public class WordDictionary
 
     public List<string> SearchWithRegex(string strRegex)
     {
-        if (string.IsNullOrWhiteSpace(strRegex))
+        if(string.IsNullOrWhiteSpace(strRegex))
         {
             throw new ArgumentException("Regex cannot be null or whitespace");
         }
@@ -138,12 +168,12 @@ public class WordDictionary
         var regex = new Regex(strRegex);
         var matches = new List<string>();
 
-        foreach (var length in GetAvailableLengths())
+        foreach(var length in GetAvailableLengths())
         {
             var words = GetWordsByLength(length);
-            foreach (var word in words)
+            foreach(var word in words)
             {
-                if (regex.IsMatch(word))
+                if(regex.IsMatch(word))
                 {
                     matches.Add(word);
                 }
@@ -158,16 +188,16 @@ public class WordDictionary
 
         var matches = new List<string>();
 
-        foreach (var length in GetAvailableLengths())
+        foreach(var length in GetAvailableLengths())
         {
             //Replicate foreach to avoid multiple checks and add/continue flow for each word
             List<string> words = GetWordsByLength(length);
 
-            if (criteria.Regex != null)
+            if(criteria.Regex != null)
             {
-                foreach (var word in words)
+                foreach(var word in words)
                 {
-                    if (criteria.Regex.IsMatch(word))
+                    if(criteria.Regex.IsMatch(word))
                     {
                         matches.Add(word);
                     }
@@ -175,12 +205,12 @@ public class WordDictionary
                 continue;
             }
 
-            if (!criteria.SpanIncludeOnly().IsEmpty)
+            if(!criteria.SpanIncludeOnly().IsEmpty)
             {
-                foreach (var word in words)
+                foreach(var word in words)
                 {
                     var wordAsSpan = word.AsSpan();
-                    if (wordAsSpan.ContainsAnyExcept(criteria.SpanIncludeOnly()) == false)
+                    if(wordAsSpan.ContainsAnyExcept(criteria.SpanIncludeOnly()) == false)
                     {
                         matches.Add(word);
                     }
@@ -189,38 +219,38 @@ public class WordDictionary
             }
 
             // Complementary criteria
-            foreach (var word in words)
+            foreach(var word in words)
             {
                 var wordAsSpan = word.AsSpan();
 
-                if (criteria.Exclude != null && wordAsSpan.ContainsAny(criteria.Exclude))
+                if(criteria.Exclude != null && wordAsSpan.ContainsAny(criteria.Exclude))
                 {
                     continue;
                 }
-                if (criteria.Include != null && !wordAsSpan.ContainsAny(criteria.Include))
+                if(criteria.Include != null && !wordAsSpan.ContainsAny(criteria.Include))
                 {
                     continue;
                 }
 
-                if (criteria.IncludeAll != null)
+                if(criteria.IncludeAll != null)
                 {
                     int lastIndex = -1;
                     int index;
                     bool allLettersFound = true;
-                    foreach (var searchValue in criteria.IncludeAll)
+                    foreach(var searchValue in criteria.IncludeAll)
                     {
                         index = wordAsSpan[(lastIndex + 1)..].IndexOfAny(searchValue);
-                        if (index == -1)
+                        if(index == -1)
                         {
                             allLettersFound = false;
                             break;
                         }
-                        if (criteria.IncludeOrder)
+                        if(criteria.IncludeOrder)
                         {
                             lastIndex += index + 1; // Move past the found letter
                         }
                     }
-                    if (!allLettersFound)
+                    if(!allLettersFound)
                     {
                         continue;
                     }
