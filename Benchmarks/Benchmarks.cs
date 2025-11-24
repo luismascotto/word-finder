@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using BenchmarkDotNet;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Disassemblers;
 
 namespace Benchmarks;
 
@@ -47,18 +45,25 @@ public class Benchmarks
     [Benchmark(Baseline = true)]
     public void FileReadAllLines()
     {
-        var dictionary = new WordDictionary(_filePathB1);
+        var dictionary = new WordDictionary(_filePath1);
         dictionary.LoadWordsFileReadAllLines(MinWordLength, MaxWordLength);
     }
 
     [Benchmark]
+    public void FileReadAllLinesLinq()
+    {
+        var dictionary = new WordDictionary(_filePath2);
+        dictionary.LoadWordsFileReadAllLines(MinWordLength, MaxWordLength);
+    }
+
+    //[Benchmark]
     public async Task StreamReadLinesAsync()
     {
         var dictionary = new WordDictionary(_filePathB2);
         await dictionary.LoadWordsStreamReadLinesAsync(MinWordLength, MaxWordLength);
     }
 
-    [Benchmark]
+    //[Benchmark]
     public async Task FilesReadAllLinesAsync()
     {
         var dictionary = new WordDictionary(_filePathB3);
@@ -104,6 +109,19 @@ public class WordDictionary
         var words = File.ReadAllLines(_filePath);
 
         foreach (var word in words)
+        {
+            var length = word.Length;
+            if (length < min || length > max)
+            {
+                continue;
+            }
+            AddWordDummy(word);
+        }
+    }
+    public void LoadWordsFileReadAllLinesLinq(int min = 2, int max = 32)
+    {
+
+        foreach (var word in File.ReadAllLines(_filePath).Where(w => w.Length >= min && w.Length <= max))
         {
             var length = word.Length;
             if (length < min || length > max)

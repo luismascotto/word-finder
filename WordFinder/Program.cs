@@ -119,14 +119,14 @@ class Program
                include == null &&
                exclude == null))
             {
-                Console.WriteLine("Regex was specified, all other options are ineffective.");
+                Console.WriteLine("'Regex' was specified, all other options will be ignored.");
             }
             else if (includeOnly != null && !(
                includeAll == null &&
                include == null &&
                exclude == null))
             {
-                Console.WriteLine("Include Only was specified, all other include/exclude are ineffective.");
+                Console.WriteLine("Include Only was specified, all other include/exclude rules may be ineffective.");
             }
 
             if (minLength.GetValueOrDefault(0) < 1 || minLength.GetValueOrDefault(0) > maxLength.GetValueOrDefault(0))
@@ -136,13 +136,13 @@ class Program
 
             Console.WriteLine($"Loading words from: {file}");
             var dictionary = new WordDictionary(file);
-            dictionary.LoadWordsReadAll();
+            dictionary.LoadWordsReadAll(minLength!.Value, maxLength!.Value);
 
 #if DEBUG
             Console.WriteLine($"Loaded {dictionary.GetAvailableLengths().Count()} word lengths.");
             foreach (var length in dictionary.GetAvailableLengths().OrderBy(l => l))
             {
-                var items =  1+(80 / (length+4));
+                var items = 1 + (80 / (length + 4));
                 var words = dictionary.GetWordsByLength(length);
                 //Console.WriteLine($" {length:D02}: Chunks {words.Chunk(words.Count/items).Count()} ChunkSize {words.Chunk(words.Count / items).FirstOrDefault()?.Length}");
 
@@ -220,7 +220,7 @@ class Program
                 .OrderBy(s => s.Length)
                 .ThenBy(s => s, StringComparer.CurrentCulture)];
 
-            for(int len = matches.FirstOrDefault("").Length; len <= matches.LastOrDefault("").Length; len++)
+            for (int len = matches.FirstOrDefault("").Length; len <= matches.LastOrDefault("").Length; len++)
             {
                 var countByLength = matches.Count(s => s.Length == len);
                 if (countByLength > 0)
@@ -233,7 +233,7 @@ class Program
                     Console.WriteLine();
 
                     var wordsByLength = matches.Where(s => s.Length == len);
-                    for(int chunkStart = 0; chunkStart < countByLength; chunkStart += PRINTING_COLUMNS)
+                    for (int chunkStart = 0; chunkStart < countByLength; chunkStart += PRINTING_COLUMNS)
                     {
                         Console.Write("  ");
                         var wordsLine = wordsByLength.Skip(chunkStart).Take(PRINTING_COLUMNS);
