@@ -58,3 +58,4 @@ nunit-*.xml
 /WordFinder/Properties/launchSettings.json
 /Benchmarks/BenchmarkDotNet.Artifacts
 /Benchmarks/*.txt
+/publish

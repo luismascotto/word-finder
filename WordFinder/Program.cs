@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using System.Diagnostics;
 
 namespace WordFinder;
 
@@ -15,10 +16,9 @@ class Program
 
         var fileOption = new Option<string>("--file", ["-p"])
         {
-            Description = "Path to the words file (text, one word per line)",
-            Required = true,
+            Description = "Path to the words/dictionary file (text content, one word per line)",
             HelpName = "file-path",
-            //DefaultValueFactory = parseResult => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "words_alpha.txt")
+            DefaultValueFactory = parseResult => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "words_alpha.txt")
         };
 
         var regexOption = new Option<string?>("--regex", ["-r"])
@@ -74,6 +74,11 @@ class Program
             Description = "When using withIncludeAll, letters must appear in the same order as provided, including with repeated values ('ss', 'rr')"
         };
 
+        var resultSortByLen = new Option<bool>(name: "--result-length", ["-rlen"])
+        {
+            Description = "When using withIncludeAll, letters must appear in the same order as provided, including with repeated values ('ss', 'rr')"
+        };
+
         rootCommand.Options.Add(fileOption);
         rootCommand.Options.Add(regexOption);
         rootCommand.Options.Add(includeAllOption);
@@ -83,6 +88,7 @@ class Program
         rootCommand.Options.Add(minLengthOption);
         rootCommand.Options.Add(maxLengthOption);
         rootCommand.Options.Add(includeAllOrderedOption);
+        rootCommand.Options.Add(resultSortByLen);
 
 
         rootCommand.SetAction(context =>
@@ -96,6 +102,7 @@ class Program
             var minLength = context.GetValue(minLengthOption);
             var maxLength = context.GetValue(maxLengthOption);
             var includeAllOrdered = context.GetValue(includeAllOrderedOption);
+            var resultSortByLength = context.GetValue(resultSortByLen);
 
             if (!File.Exists(file))
             {
@@ -134,10 +141,14 @@ class Program
                 throw new ArgumentException("Minimum length cannot be greater than maximum length, and greater than zero");
             }
 
+            var stopwatch = Stopwatch.StartNew();
             Console.WriteLine($"Creating dictionary from: {file}");
             var dictionary = new WordDictionary(file, minLength!.Value, maxLength!.Value);
+            stopwatch.WritelineElapsedAndRestart("Dictionary created in");
+
             Console.WriteLine($"Loading words from size {minLength!.Value} to {maxLength!.Value}");
             dictionary.LoadWords();
+            stopwatch.WritelineElapsedAndRestart("Dictionary loaded in");
 
 #if DEBUG_CHUNK
             Console.WriteLine($"Loaded {dictionary.GetAvailableLengths().Count()} word lengths.");
@@ -198,6 +209,8 @@ class Program
                     includeAllOrdered);
             }
 
+            stopwatch.WritelineElapsedAndRestart("Searched in");
+
             var columnWidth = matches.Max(s => s.Length) + 4; // spaces for padding
 
             Console.WriteLine($"\nFound {matches.Count} matching words:");
@@ -217,31 +230,54 @@ class Program
             //Console.WriteLine();
             //Console.WriteLine("----- NEW");
             //Sort by length then alphabetically
-            matches = [.. matches
+            if (resultSortByLength)
+            {
+                matches = [.. matches
                 .OrderBy(s => s.Length)
                 .ThenBy(s => s, StringComparer.CurrentCulture)];
-
-            for (int len = matches.FirstOrDefault("").Length; len <= matches.LastOrDefault("").Length; len++)
+            }
+            else
             {
-                var countByLength = matches.Count(s => s.Length == len);
-                if (countByLength > 0)
-                {
-                    Console.Write($"Length {len:D2}: {countByLength} word");
-                    if (countByLength > 1)
-                    {
-                        Console.Write("(s)");
-                    }
-                    Console.WriteLine();
+                matches = [.. matches
+                .OrderBy(s => s, StringComparer.CurrentCulture)];
+            }
 
-                    var wordsByLength = matches.Where(s => s.Length == len);
-                    for (int chunkStart = 0; chunkStart < countByLength; chunkStart += PRINTING_COLUMNS)
+            stopwatch.WritelineElapsedAndRestart("Sorted in");
+
+                if(resultSortByLength)
+            {
+                for(int len = matches.FirstOrDefault("").Length; len <= matches.LastOrDefault("").Length; len++)
+                {
+                    var countByLength = matches.Count(s => s.Length == len);
+                    if(countByLength > 0)
                     {
-                        Console.Write("  ");
-                        var wordsLine = wordsByLength.Skip(chunkStart).Take(PRINTING_COLUMNS);
-                        Console.WriteLine(wordsLine.Detailed(_spaces[..(columnWidth - len)]));
+                        Console.Write($"Length {len:D2}: {countByLength} word");
+                        if(countByLength > 1)
+                        {
+                            Console.Write("(s)");
+                        }
+                        Console.WriteLine();
+
+                        var wordsByLength = matches.Where(s => s.Length == len);
+                        for(int chunkStart = 0; chunkStart < countByLength; chunkStart += PRINTING_COLUMNS)
+                        {
+                            Console.Write("  ");
+                            var wordsLine = wordsByLength.Skip(chunkStart).Take(PRINTING_COLUMNS);
+                            Console.WriteLine(wordsLine.Detailed(_spaces[..(columnWidth - len)]));
+                        }
                     }
                 }
+            } else
+            {
+                List<string> starting = [.. matches.Select(s => s[..2]).DistinctBy(s => s)];
+                foreach(var start in starting.OrderBy(s => s, StringComparer.CurrentCulture))
+                {
+                    var startGroup = matches.Where(s => s.StartsWith(start, StringComparison.CurrentCultureIgnoreCase)).ToList();
+                    Console.WriteLine($"{start.ToUpperInvariant()}: {startGroup.Count}");
+                    Console.WriteLine(startGroup.Detailed());
+                }
             }
+
             Console.WriteLine();
         });
 

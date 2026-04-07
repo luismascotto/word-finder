@@ -225,4 +225,15 @@ public static class NewExtensions
             }
         }
     }
+
+
+    extension(Stopwatch watch)
+    {
+        public void WritelineElapsedAndRestart(string console)
+        {
+            TimeSpan elapsed = watch.Elapsed;
+            Console.WriteLine($"{console}: {(int)elapsed.TotalMilliseconds} ms");
+            watch.Restart();
+        }
+}
 }
