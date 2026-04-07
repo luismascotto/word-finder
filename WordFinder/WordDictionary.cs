@@ -1,18 +1,39 @@
-using System.Buffers;
+﻿using System.Buffers;
+using System.IO.Pipelines;
+using System.Text;
 using System.Text.RegularExpressions;
+
 
 namespace WordFinder;
 
 public class WordDictionary
 {
+    private const int MAX_WORD_LEN = 64;
+    private static ReadOnlySpan<byte> NewLine => "\r\n"u8;
     private readonly Dictionary<int, List<string>> _wordsByLength;
     private readonly string _filePath;
+    readonly int minWordLen;
+    readonly int maxWordLen;
 
 
-    public WordDictionary(string filePath)
+    public WordDictionary(string filePath, int minWordLen, int maxWordLen)
     {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"Dictionary file not found at: {_filePath}");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minWordLen);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxWordLen);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(minWordLen, maxWordLen, nameof(minWordLen));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxWordLen, MAX_WORD_LEN, nameof(maxWordLen));
+
+        this.minWordLen = minWordLen;
+        this.maxWordLen = maxWordLen;
+
         _filePath = filePath;
         _wordsByLength = [];
+        PreAlloc();
     }
 
     static int GetSizePreAlloc(int c)
@@ -51,74 +72,161 @@ public class WordDictionary
         };
 
     }
-    public void LoadWordsReadAll(int min = 2, int max = 32)
+
+    private void PreAlloc()
     {
-        //if (!File.Exists(_filePath))
-        //{
-        //    throw new FileNotFoundException($"Word file not found at: {_filePath}");
-        //}
-        for (int c = min; c <= max; c++)
+        for (int c = minWordLen; c <= maxWordLen; c++)
         {
             int pre = GetSizePreAlloc(c);
-            if (pre > 0)
+            if (pre <= 0)
             {
-                _wordsByLength[c] = new(256);
+                pre = 32; // default pre-allocation size for lengths without specific data
             }
+#if preview_
+            _wordsByLength[c] = [with(pre)];
+#else
+            _wordsByLength[c] = new(pre);
+#endif
         }
+    }
 
+    public void LoadWords()
+    {
+        ReadLineUsingPipelineVer2Async().Wait();
+    }
+    public void LoadWordsReadAll()
+    {
         var words = File.ReadAllLines(_filePath);
 
         foreach (var word in words)
         {
-            var length = word.Length;
-            if (word.Length > max || word.Length < min)
-            {
-                continue;
-            }
-            _wordsByLength[length].Add(word);
-            //if (!_wordsByLength.TryGetValue(length, out List<string>? currLengthWords))
-            //{
-            //    currLengthWords = [];
-            //    _wordsByLength[length] = currLengthWords;
-            //}
-
-            //currLengthWords.Add(word);
+            AddString(word);
         }
     }
 
-    public async Task LoadWordsAsync(int min = 2, int max = 32)
+    public async Task LoadWordsAsync()
     {
         await foreach (var word in ReadLinesAsync(_filePath))
         {
-            var length = word.Length;
-            if (length < min || length > max)
-            {
-                continue;
-            }
-            if (!_wordsByLength.TryGetValue(length, out List<string>? currLengthWords))
-            {
-                currLengthWords = [];
-                _wordsByLength[length] = currLengthWords;
-            }
-
-            currLengthWords.Add(word);
+            AddString(word);
         }
     }
 
-    public static async IAsyncEnumerable<string> ReadLinesAsync(string path)
+    private static int GetFileStreamBufferSize(long fileLength)
     {
-        using var reader = new StreamReader(path);
-        string? line;
-        while ((line = await reader.ReadLineAsync()) is not null)
+        return fileLength switch
+        {
+            <= 262144 => 0,
+            <= 5242880 => 81920,
+            < 104857600 => 131072,
+            >= 104857600 => 1048576
+        };
+    }
+    private static async IAsyncEnumerable<string> ReadLinesAsync(string path)
+    {
+        using var stream = GetFileStreamAsyncRead(path);
+        using var reader = new StreamReader(stream);
+
+        while (await reader.ReadLineAsync() is { } line)
         {
             yield return line;
         }
     }
 
-    public List<string> GetWordsByLength(int length)
-    { return _wordsByLength.TryGetValue(length, out var words) ? words : []; }
+    private void AddSpan(ReadOnlySpan<byte> word)
+    {
+        if (word.Length > maxWordLen || word.Length < minWordLen)
+        {
+            return;
+        }
+        _wordsByLength[word.Length].Add(Encoding.UTF8.GetString(word));
+    }
+    private void AddString(string word)
+    {
+        if (word.Length > maxWordLen || word.Length < minWordLen)
+        {
+            return;
+        }
+        _wordsByLength[word.Length].Add(word);
+    }
 
-    public IEnumerable<int> GetAvailableLengths() { return _wordsByLength.Keys.OrderBy(k => k); }
+    private void ProcessLine(ref ReadOnlySequence<byte> buffer)
+    {
+        if (buffer.IsSingleSegment)
+        {
+            var span = buffer.FirstSpan;
+            int consumed;
+            while (span.Length > 0)
+            {
+                var newLine = span.IndexOf(NewLine);
+
+                if (newLine == -1)
+                {
+                    break;
+                }
+
+                var line = span[..newLine];
+
+                AddSpan(line);
+
+                consumed = line.Length + NewLine.Length;
+                span = span[consumed..];
+                buffer = buffer.Slice(consumed);
+            }
+        }
+        else
+        {
+            var sequenceReader = new SequenceReader<byte>(buffer);
+
+            while (!sequenceReader.End)
+            {
+                while (sequenceReader.TryReadTo(out ReadOnlySpan<byte> line, NewLine))
+                {
+                    // simulate string processing
+                    AddSpan(line);
+                }
+
+                buffer = buffer.Slice(sequenceReader.Position);
+                sequenceReader.Advance(buffer.Length);
+            }
+        }
+    }
+
+    public async Task ReadLineUsingPipelineVer2Async()
+    {
+        using FileStream stream = GetFileStreamAsyncRead(_filePath);
+
+        var reader = PipeReader.Create(stream, new StreamPipeReaderOptions());
+
+
+        while (true)
+        {
+            ReadResult result = await reader.ReadAsync();
+            ReadOnlySequence<byte> buffer = result.Buffer;
+
+            ProcessLine(ref buffer);
+
+            reader.AdvanceTo(buffer.Start, buffer.End);
+
+            if (result.IsCompleted)
+            {
+                break;
+            }
+        }
+
+        await reader.CompleteAsync();
+
+    }
+
+    private static FileStream GetFileStreamAsyncRead(string path)
+    {
+        return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: GetFileStreamBufferSize(new FileInfo(path).Length), useAsync: true);
+    }
+
+    public List<string> GetWordsByLength(int length) => _wordsByLength.TryGetValue(length, out var words) ? words : [];
+
+    public IEnumerable<int> GetAvailableLengths() => _wordsByLength.Keys.OrderBy(k => k);
 
     public List<string> Search(
         string? inputIncludeAll,

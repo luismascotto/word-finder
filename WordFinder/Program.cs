@@ -41,7 +41,7 @@ class Program
             HelpName = "letters"
         };
 
-        // "abefkst": Valids: beetle, test, sorry, fly. Invalids: clock, dull
+        // "abefkst": Valids: beetle, test, sorry, fly. Invalids: cloth, dull
         var includeOption = new Option<string?>("--include", ["-any"])
         {
             Description = "Letters that must appear at least one time in the word",
@@ -134,11 +134,12 @@ class Program
                 throw new ArgumentException("Minimum length cannot be greater than maximum length, and greater than zero");
             }
 
-            Console.WriteLine($"Loading words from: {file}");
-            var dictionary = new WordDictionary(file);
-            dictionary.LoadWordsReadAll(minLength!.Value, maxLength!.Value);
+            Console.WriteLine($"Creating dictionary from: {file}");
+            var dictionary = new WordDictionary(file, minLength!.Value, maxLength!.Value);
+            Console.WriteLine($"Loading words from size {minLength!.Value} to {maxLength!.Value}");
+            dictionary.LoadWords();
 
-#if DEBUG
+#if DEBUG_CHUNK
             Console.WriteLine($"Loaded {dictionary.GetAvailableLengths().Count()} word lengths.");
             foreach (var length in dictionary.GetAvailableLengths().OrderBy(l => l))
             {
