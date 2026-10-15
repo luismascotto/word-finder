@@ -1,5 +1,24 @@
 # word-finder
-Load a list of words and finds possible matches
+
+A command-line tool to load a list of words and find possible matches based on various search criteria.
+
+## Building
+
+```bash
+dotnet build
+```
+
+## Running
+
+```bash
+dotnet run --project WordFinder -- [options]
+```
+
+Or after building:
+
+```bash
+./WordFinder/bin/Debug/net10.0/WordFinder [options]
+```
 
 
 
