@@ -19,7 +19,7 @@ jobs:
         dotnet-version: '10.0.x'
     
     - name: Restore dependencies
-      run: dotnet restore word-finder.sln
+      run: dotnet restore WordFinder/WordFinder.csproj
     
     - name: Build
-      run: dotnet build word-finder.sln --no-restore --configuration Release
+      run: dotnet build WordFinder/WordFinder.csproj --no-restore --configuration Release
