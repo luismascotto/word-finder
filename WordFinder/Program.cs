@@ -76,7 +76,7 @@ class Program
 
         var resultSortByLen = new Option<bool>(name: "--result-length", ["-rlen"])
         {
-            Description = "When using withIncludeAll, letters must appear in the same order as provided, including with repeated values ('ss', 'rr')"
+            Description = "Sort results by word length, then alphabetically"
         };
 
         rootCommand.Options.Add(fileOption);
